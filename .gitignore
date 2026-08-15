@@ -1,0 +1,170 @@
+# ============================================================
+# macOS
+# ============================================================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# macOS folder metadata
+.Spotlight-V100
+.Trashes
+.fseventsd
+.DocumentRevisions-V100
+.TemporaryItems
+.VolumeIcon.icns
+
+
+# ============================================================
+# Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+*.so
+
+# Python distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Type checking / linting caches
+.mypy_cache/
+.pyre/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+
+# ============================================================
+# Virtual environments
+# ============================================================
+
+.venv/
+venv/
+env/
+ENV/
+.conda/
+conda-env/
+
+
+# ============================================================
+# Environment / secrets
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+# Local configuration overrides
+config.local.*
+configs/local/
+
+
+# ============================================================
+# IDEs / Editors
+# ============================================================
+
+.vscode/
+.idea/
+
+*.swp
+*.swo
+*~
+*.bak
+
+
+# ============================================================
+# Logs
+# ============================================================
+
+*.log
+logs/
+
+
+# ============================================================
+# Project-generated temporary files
+# ============================================================
+
+tmp/
+temp/
+.cache/
+
+
+# ============================================================
+# Large/generated data
+# ============================================================
+
+# Local datasets
+data/raw/
+data/processed/
+
+# Generated model/index artifacts
+models/
+checkpoints/
+weights/
+
+# Vector indexes / retrieval artifacts
+indexes/
+vector_store/
+vector_db/
+
+# Generated embeddings
+embeddings/
+
+
+# ============================================================
+# Experiment outputs
+# ============================================================
+
+# Ignore generated results by default
+results/*
+
+# Keep the directory itself in Git
+!results/.gitkeep
+
+# Experiment-generated temporary outputs
+experiments/**/outputs/
+experiments/**/logs/
+
+
+# ============================================================
+# Python tooling
+# ============================================================
+
+pip-wheel-metadata/
+pip-log.txt
+poetry.lock
+
+# Optional: local package manager files
+.pdm-python
+.pdm-build/
+
+
+# ============================================================
+# Miscellaneous
+# ============================================================
+
+*.tmp
+*.temp
+*.cache
+*.pickle
+*.pkl
+
+# SQLite / local databases
+*.db
+*.sqlite
+*.sqlite3
