@@ -5,7 +5,25 @@ The primary goal is not simply to build a RAG application, but to diagnose failu
 
 ## Project Status
 
-Early development.
+### Stage 0 - Information Parsing
+
+Any research paper will contain elements across different modalities. Also, it will contain information arranged in a hierarchical fashion. We want this project to be a multi-modal RAG built for scientific paper analysis. For this reason, we primarily divide the parsing part based on the modalities and utilise different parsers based on their strengths to get the best of both worlds.
+
+                    Scientific PDF
+                         │
+                ┌────────┴────────┐
+                │                 │
+          Document Parser     Visual Elements
+                │                 │
+        ┌───────┼───────┐     ┌───┴────┐
+        │       │       │     │        │
+       Text   Tables  Structure  Figures  Equations
+        │       │       │     │        │
+        └───────┴───────┴─────┴────────┘
+                         │
+                  Canonical Document
+                         │
+                    Chunking/RAG
 
 The project will be developed incrementally:
 
