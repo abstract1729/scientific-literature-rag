@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Verify candidate arXiv IDs and incrementally build corpus metadata.
 
@@ -23,7 +21,7 @@ The arXiv API is the source of truth for:
     - PDF URL
 """
 
-import argparse
+
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -223,21 +221,3 @@ def verify_arxiv_ids(input_path: Path,output_path: Path,failures_path: Path):
     print(f"\nMetadata       : {output_path}")
     print(f"Failures       : {failures_path}")
 
-
-def main():
-    parser = argparse.ArgumentParser(
-        description=(
-            "Incrementally verify arXiv candidate IDs and "
-            "build the corpus metadata CSV."
-        )
-    )
-
-    parser.add_argument("--input",type=Path,default=DEFAULT_INPUT,help="Candidate ID CSV.",)
-    parser.add_argument("--output",type=Path,default=DEFAULT_OUTPUT,help="Corpus metadata CSV.",)
-    parser.add_argument("--failures",type=Path,default=DEFAULT_FAILURES,help="Failed ID CSV.",)
-    args = parser.parse_args()
-    verify_arxiv_ids(input_path=args.input,output_path=args.output,failures_path=args.failures)
-
-
-if __name__ == "__main__":
-    main()

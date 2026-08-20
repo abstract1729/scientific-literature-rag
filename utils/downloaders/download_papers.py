@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """
 Incrementally download arXiv papers from corpus metadata.
 
@@ -18,7 +16,6 @@ Behavior:
         data/raw/papers/download_failures.csv
 """
 
-import argparse
 import time
 from pathlib import Path
 
@@ -209,31 +206,4 @@ def download_papers(metadata_path: Path = DEFAULT_METADATA,output_dir: Path = DE
     print(f"PDFs available    : {len(final_existing_ids)}")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description=(
-            "Incrementally download missing arXiv papers "
-            "from corpus metadata."
-        ))
-
-    # These are OPTIONAL.
-    # If not supplied, the project defaults are used.
-
-    parser.add_argument("--metadata",type=Path,default=DEFAULT_METADATA,
-        help=(
-            "Path to corpus metadata CSV "
-            "(default: data/raw/corpus_metadata.csv)"
-        ))
-
-    parser.add_argument("--output-dir",type=Path,default=DEFAULT_OUTPUT_DIR,
-        help=(
-            "Directory for downloaded PDFs "
-            "(default: data/raw/papers)"
-        ))
-
-    args = parser.parse_args()
-    download_papers(metadata_path=args.metadata,output_dir=args.output_dir,)
-
-
-if __name__ == "__main__":
-    main()
+    
