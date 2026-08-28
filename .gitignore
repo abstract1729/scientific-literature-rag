@@ -130,11 +130,17 @@ embeddings/
 # Experiment outputs
 # ============================================================
 
-# Ignore generated results by default
+# Ignore temporary/generated experiment artifacts by default
 results/*
 
-# Keep the directory itself in Git
+# Keep directory structure
 !results/.gitkeep
+
+# Keep reproducible experiment reports/metrics
+!results/**/*.json
+!results/**/*.jsonl
+!results/**/*.csv
+!results/**/*.md
 
 # Experiment-generated temporary outputs
 experiments/**/outputs/

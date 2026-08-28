@@ -1,56 +1,31 @@
-# scientific-literature-rag
-Scientific Literature RAG is an experimental NLP and information retrieval system for building and systematically evaluating Retrieval-Augmented Generation (RAG) over scientific research papers. The project investigates how document chunking, embeddings, sparse and dense retrieval, hybrid search, reranking, query processing, context construction, and grounding strategies affect retrieval quality and end-to-end answer generation.
+# Scientific Literature RAG
 
-The primary goal is not simply to build a RAG application, but to diagnose failures, quantify improvements, study engineering trade-offs, and develop a technically justified final configuration.
+A multimodal Retrieval-Augmented Generation (RAG) system designed for technical and scientific research papers. Instead of converting PDFs into conventional text chunks, the system treats each PDF page as a visual document and uses ColPali to build multi-vector visual representations that preserve information contained in text, equations, tables, figures, and diagrams.
 
-## Project Status
+The project currently establishes a ColPali-based baseline using page-level visual retrieval with Qdrant as the vector store. The system covers PDF ingestion, page rendering, ColPali indexing, late-interaction retrieval, and downstream multimodal generation. The project is organized into incremental experimental stages to evaluate retrieval quality, retrieval efficiency, and multimodal generation performance.
 
-### Stage 0 - Information Parsing
+## Experimental Roadmap
 
-Any research paper will contain elements across different modalities. Also, it will contain information arranged in a hierarchical fashion. We want this project to be a multi-modal RAG built for scientific paper analysis. For this reason, we primarily divide the parsing part based on the modalities and utilise different parsers based on their strengths to get the best of both worlds.
+### E0 — ColPali Baseline
 
-                    Scientific PDF
-                         │
-                ┌────────┴────────┐
-                │                 │
-          Document Parser     Visual Elements
-                │                 │
-        ┌───────┼───────┐     ┌───┴────┐
-        │       │       │     │        │
-       Text   Tables  Structure  Figures  Equations
-        │       │       │     │        │
-        └───────┴───────┴─────┴────────┘
-                         │
-                  Canonical Document
-                         │
-                    Chunking/RAG
+Establish a working end-to-end multimodal RAG baseline using ColPali and Qdrant. PDF pages are rendered as images, represented using ColPali multi-vectors, and retrieved using late-interaction MaxSim scoring.
 
-The project will be developed incrementally:
+The baseline serves as the reference system against which all subsequent retrieval and generation experiments are compared.
 
-**Baseline → Evaluate → Experiment → Analyze → Improve → Repeat**
+### E1 — Metadata Filtering
 
-## Initial Scope
+Evaluate whether query-dependent metadata filtering can reduce the retrieval search space while maintaining retrieval quality.
 
-- Scientific research paper corpus
-- Text-based document processing
-- Retrieval-Augmented Generation
-- Sparse and dense information retrieval
-- Embedding and reranking experiments
-- RAG evaluation
-- Grounding and hallucination analysis
-- Controlled ML experiments and ablation studies
+The experiment compares filtered retrieval against the full-corpus ColPali baseline using retrieval accuracy and latency metrics.
 
-## Repository
+### E2 — Metadata Filtering + Re-ranking
 
-```text
-scientific-literature-rag/
-├── README.md
-├── .gitignore
-├── requirements.txt
-├── src/
-├── configs/
-├── experiments/
-├── benchmarks/
-├── results/
-├── scripts/
-└── docs/
+Introduce a two-stage retrieval strategy using reduced page representations for efficient candidate retrieval, followed by re-ranking using the original ColPali multi-vector representations and late-interaction scoring.
+
+The experiment evaluates the trade-off between retrieval latency and retrieval quality.
+
+### E3 — Multimodal Generation with Qwen2.5-VL
+
+Use the retrieved PDF page images as visual context for a locally deployed Qwen2.5-VL model.
+
+The experiment evaluates whether an open-source vision-language model can generate grounded answers from the visually retrieved scientific evidence while enabling local inference without dependence on a hosted generation API.
