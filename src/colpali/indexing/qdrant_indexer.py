@@ -1,208 +1,303 @@
 from __future__ import annotations
 
-import uuid
-from pathlib import Path
-from typing import Iterable
+import time
+from typing import Any
 
 import torch
-from PIL import Image
 from qdrant_client import QdrantClient
-from qdrant_client.models import (Distance,HnswConfigDiff,MultiVectorComparator,
-                                  MultiVectorConfig,PointStruct,VectorParams)
-from src.colpali.ingestion.colpali_encoder import (ColPaliEncoder)
+from src.colpali.ingestion.colpali_encoder import ColPaliEncoder
+from src.retrieval_evaluation.results import (RetrievedPage,RetrievalResult,RetrievalTiming)
 
 
-class ColPaliQdrantIndexer:
+class ColPaliQdrantRetriever:
     """
-    Index ColPali page embeddings directly into Qdrant.
+    Vanilla ColPali retrieval using Qdrant multivector search.
 
-    One PDF page corresponds to one Qdrant point.
+    Query:
+        text
+        ↓
+        ColPali query embedding
+        ↓
+        Qdrant MAX_SIM
+        ↓
+        top-k pages
+        ↓
+        RetrievalResult
     """
 
-    def __init__(
-        self,
-        encoder: ColPaliEncoder,
-        collection_name: str = "colpali_pages",
-        qdrant_path: str = (
-            "data/processed/colpali/qdrant"
-        ),
-    ):
+    def __init__(self,encoder: ColPaliEncoder,collection_name: str = "colpali_pages",qdrant_path: str = "data/processed/colpali/qdrant"):
         self.encoder = encoder
         self.collection_name = collection_name
-
-        self.client = QdrantClient(
-            path=qdrant_path
-        )
-
-        self._ensure_collection()
+        self.qdrant_path = qdrant_path
+        self.client = QdrantClient(path=qdrant_path)
 
     # ------------------------------------------------------------------
-    # Qdrant ID
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _point_id(page_id: str) -> str:
-        """
-        Generate a deterministic UUID for a page.
-        The same page_id always produces the same Qdrant ID.
-        """
-        return str(uuid.uuid5(uuid.NAMESPACE_URL,page_id))
+    def _encode_query(self, query: str):
+        """Encode a text query using ColPali."""
 
-    # ------------------------------------------------------------------
-    # Collection
-    # ------------------------------------------------------------------
+        query_embedding = self.encoder.encode_query(query)
 
-    def _ensure_collection(self) -> None:
-        """
-        Create the ColPali multivector collection if it
-        does not already exist.
-        """
-        collections = self.client.get_collections()
-        existing_names = { collection.name for collection in collections.collections }
-        if self.collection_name in existing_names:
-            return
+        if query_embedding.ndim != 3:
+            raise ValueError(
+                "Unexpected query embedding shape: "
+                f"{tuple(query_embedding.shape)}"
+            )
 
-        self.client.create_collection(
+        return query_embedding
+
+    def _search_qdrant(self,query_embedding,top_k: int,):
+        """Run Qdrant MaxSim search."""
+
+        query_vectors = (query_embedding.squeeze(0).tolist())
+        response = self.client.query_points(
             collection_name=self.collection_name,
-            vectors_config=VectorParams(size=128,distance=Distance.DOT,
-                                        multivector_config=MultiVectorConfig(comparator=MultiVectorComparator.MAX_SIM),),
-                                        hnsw_config=HnswConfigDiff(m=0))
-
-    # ------------------------------------------------------------------
-    # Incremental check
-    # ------------------------------------------------------------------
-
-    def _page_exists(
-        self,
-        page_id: str,
-    ) -> bool:
-        """
-        Check whether a page has already been indexed.
-        """
-
-        point_id = self._point_id(page_id)
-
-        result = self.client.retrieve(
-            collection_name=self.collection_name,
-            ids=[point_id],
-            with_payload=False,
+            query=query_vectors,
+            limit=top_k,
+            with_payload=True,
             with_vectors=False,
         )
 
-        return len(result) > 0
-
-    # ------------------------------------------------------------------
-    # Tensor conversion
-    # ------------------------------------------------------------------
+        return response
 
     @staticmethod
-    def _tensor_to_vectors(embedding: torch.Tensor,) -> list[list[float]]:
+    def _format_results(response) -> list[RetrievedPage]:
         """
-        Convert a single-page ColPali embedding to the
-        list-of-vectors representation expected by Qdrant.
-
-        Input:
-            [1, num_tokens, embedding_dim]
-
-        Output:
-            [num_tokens, embedding_dim]
+        Convert Qdrant points into standardized RetrievedPage objects.
         """
 
-        if embedding.ndim != 3:
-            raise ValueError(
-                "Expected embedding with shape "
-                "[batch, num_tokens, embedding_dim]. "
-                f"Got: {tuple(embedding.shape)}"
+        results: list[RetrievedPage] = []
+        for point in response.points:
+            payload: dict[str, Any] = point.payload or {}
+            page_id = payload.get("page_id")
+            if page_id is None:
+                raise ValueError(
+                    "Qdrant point is missing required 'page_id' "
+                    "in payload."
+                )
+
+            paper_id = payload.get("paper_id")
+
+            if paper_id is None:
+                raise ValueError(
+                    "Qdrant point is missing required 'paper_id' "
+                    "in payload."
+                )
+
+            page_number = payload.get("page_number")
+
+            if page_number is None:
+                raise ValueError(
+                    "Qdrant point is missing required 'page_number' "
+                    "in payload."
+                )
+
+            results.append(
+                RetrievedPage(
+                    page_id=str(page_id),
+                    paper_id=str(paper_id),
+                    page_number=int(page_number),
+                    score=float(point.score),
+                    metadata=payload,
+                )
             )
 
-        if embedding.shape[0] != 1:
-            raise ValueError(
-                "index_page() expects exactly one page."
-            )
+        return results
 
-        embedding = embedding.squeeze(0)
+    def _cleanup(
+        self,
+        query_embedding,
+        query_vectors=None,
+    ) -> None:
+        """Release temporary query tensors."""
 
-        return embedding.tolist()
+        if query_embedding is not None:
+            del query_embedding
+
+        if query_vectors is not None:
+            del query_vectors
+
+        if self.encoder.device == "mps":
+            torch.mps.empty_cache()
 
     # ------------------------------------------------------------------
-    # Single page
+    # Standard retrieval interface
     # ------------------------------------------------------------------
 
-    def index_page(self,page_id: str,image_path: str | Path,payload: dict) -> bool:
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 5,
+    ) -> RetrievalResult:
         """
-        Encode and index one page.
+        Retrieve top-k pages for a natural-language query.
 
         Returns
         -------
-        bool
-            True  -> page was newly indexed
-            False -> page was already present
+        RetrievalResult
+            Standardized retrieval result used by the evaluation
+            framework.
         """
 
-        if self._page_exists(page_id):
-            return False
-
-        image = Image.open(image_path).convert("RGB")
-        embeddings = None
-        vectors = None
-
-        try:
-            embeddings = self.encoder.encode_images([image])
-            vectors = self._tensor_to_vectors(embeddings)
-            point = PointStruct(id=self._point_id(page_id),vector=vectors,payload=payload)
-            self.client.upsert(collection_name=self.collection_name,points=[point])
-            return True
-
-        finally:
-            image.close()
-
-            del image
-
-            if embeddings is not None:
-                del embeddings
-
-            if vectors is not None:
-                del vectors
-
-            if torch.backends.mps.is_available():
-                torch.mps.empty_cache()
-
-    # ------------------------------------------------------------------
-    # Corpus
-    # ------------------------------------------------------------------
-
-    def index_pages(self,page_records: Iterable[dict]) -> None:
-        """
-        Incrementally index all pages.
-
-        Already-indexed pages are skipped using their
-        deterministic Qdrant point IDs.
-        """
-
-        from tqdm import tqdm
-
-        indexed = 0
-        skipped = 0
-
-        for record in tqdm(
-            page_records,
-            desc="Indexing ColPali pages",
-            unit="page",
-        ):
-            was_indexed = self.index_page(
-                page_id=record["page_id"],
-                image_path=record["image_path"],
-                payload=record,
+        if not query or not query.strip():
+            raise ValueError(
+                "query must be a non-empty string."
             )
 
-            if was_indexed:
-                indexed += 1
-            else:
-                skipped += 1
+        if top_k <= 0:
+            raise ValueError(
+                "top_k must be greater than 0."
+            )
 
-        print(
-            f"\nIndexed: {indexed} pages"
-        )
-        print(
-            f"Skipped: {skipped} pages"
-        )
+        query_embedding = None
+
+        try:
+            # ----------------------------------------------------------
+            # Query encoding
+            # ----------------------------------------------------------
+
+            query_embedding = self._encode_query(query)
+
+            # ----------------------------------------------------------
+            # Qdrant MaxSim retrieval
+            # ----------------------------------------------------------
+
+            response = self._search_qdrant(
+                query_embedding=query_embedding,
+                top_k=top_k,
+            )
+
+            # ----------------------------------------------------------
+            # Standardize results
+            # ----------------------------------------------------------
+
+            results = self._format_results(response)
+
+            return RetrievalResult(
+                query=query,
+                results=results,
+                timing=None,
+            )
+
+        finally:
+            self._cleanup(query_embedding)
+
+    # ------------------------------------------------------------------
+    # Retrieval with latency measurement
+    # ------------------------------------------------------------------
+
+    def retrieve_with_timing(
+        self,
+        query: str,
+        top_k: int = 5,
+    ) -> RetrievalResult:
+        """
+        Retrieve top-k pages while measuring:
+
+        - query encoding latency
+        - Qdrant retrieval latency
+        - total retrieval latency
+
+        Returns
+        -------
+        RetrievalResult
+            Standardized retrieval result containing pages and
+            timing information.
+        """
+
+        if not query or not query.strip():
+            raise ValueError(
+                "query must be a non-empty string."
+            )
+
+        if top_k <= 0:
+            raise ValueError(
+                "top_k must be greater than 0."
+            )
+
+        query_embedding = None
+
+        start_total = time.perf_counter()
+
+        try:
+            # ----------------------------------------------------------
+            # Query encoding
+            # ----------------------------------------------------------
+
+            start_encoding = time.perf_counter()
+
+            query_embedding = self._encode_query(query)
+
+            # MPS operations are asynchronous.
+            # Synchronize before recording the encoding latency.
+            if self.encoder.device == "mps":
+                torch.mps.synchronize()
+
+            encoding_time = (
+                time.perf_counter()
+                - start_encoding
+            )
+
+            # ----------------------------------------------------------
+            # Qdrant retrieval
+            # ----------------------------------------------------------
+
+            start_qdrant = time.perf_counter()
+
+            response = self._search_qdrant(
+                query_embedding=query_embedding,
+                top_k=top_k,
+            )
+
+            qdrant_time = (
+                time.perf_counter()
+                - start_qdrant
+            )
+
+            # ----------------------------------------------------------
+            # Format results
+            # ----------------------------------------------------------
+
+            results = self._format_results(response)
+
+            total_time = (
+                time.perf_counter()
+                - start_total
+            )
+
+            timing = RetrievalTiming(
+                encoding_ms=encoding_time * 1000.0,
+                retrieval_ms=qdrant_time * 1000.0,
+                total_ms=total_time * 1000.0,
+            )
+
+            return RetrievalResult(
+                query=query,
+                results=results,
+                timing=timing,
+            )
+
+        finally:
+            self._cleanup(query_embedding)
+
+    # ------------------------------------------------------------------
+    # Resource management
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Close the Qdrant client."""
+
+        self.client.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(
+        self,
+        exc_type,
+        exc_value,
+        traceback,
+    ):
+        self.close()
